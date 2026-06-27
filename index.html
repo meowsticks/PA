@@ -1,1 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1612">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<title>Ledger</title>
+<style>
+  :root {
+    --bg: #1a1612;
+    --surface: #241f1a;
+    --surface-2: #2e2822;
+    --border: #3a332b;
+    --text: #ede4d6;
+    --text-dim: #a89b88;
+    --text-faint: #75695a;
+    --amber: #e0a458;
+    --amber-dim: #b8854a;
+    --sage: #8caa6e;
+    --rust: #c4704a;
+    --radius: 14px;
+    --shadow: 0 8px 30px rgba(0,0,0,0.45);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
 
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+  body {
+    padding:
+      calc(var(--safe-top) + 8px)
+      var(--safe-right)
+      calc(var(--safe-bottom) + 96px)
+      var(--safe-left);
+    max-width: 640px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 18px 14px;
+  }
+  header h1 {
+    font-size: 1.35rem;
+    font-weight: 650;
+    margin: 0;
+    letter-spacing: 0.3px;
+  }
+  header h1 .dot { color: var(--amber); }
+
+  .icon-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    font-size: 1.15rem;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background .15s ease, transform .08s ease;
+  }
+  .icon-btn:active { transform: scale(0.94); background: var(--surface-2); }
+
+  /* ---- Summary ---- */
+  .summary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin: 0 14px 14px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .net-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .net-row .label { color: var(--text-dim); font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; }
+  .net-value { font-size: 2.1rem; font-weight: 700; }
+  .net-value.pos { color: var(--sage); }
+  .net-value.neg { color: var(--rust); }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .stat {
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 10px 12px;
+    text-align: center;
+  }
+  .stat .k { font-size: .68rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: .06em; }
+  .stat .v { font-size: 1.05rem; font-weight: 650; margin-top: 3px; }
+  .stat .v.earn { color: var(--sage); }
+  .stat .v.spend { color: var(--rust); }
+
+  /* ---- Period switch ---- */
+  .period {
+    display: flex;
+    gap: 6px;
+    margin: 0 14px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 5px;
+  }
+  .period button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 9px 0;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background .15s ease, color .15s ease;
+  }
+  .period button.active { background: var(--amber); color: #2a1f10; }
+
+  /* ---- Entry list ---- */
+  .list { margin: 0 14px; }
+  .list-empty {
+    text-align: center;
+    color: var(--text-faint);
+    padding: 48px 16px;
+    font-size: .95rem;
+  }
+  .day-head {
+    color: var(--text-faint);
+    font-size: .74rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin: 18px 4px 8px;
+  }
+  .entry {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 13px 14px;
+    margin-bottom: 9px;
+    cursor: pointer;
+    transition: background .12s ease, transform .08s ease;
+  }
+  .entry:active { transform: scale(0.99); background: var(--surface-2); }
+  .entry .badge {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .entry .badge.hours { background: rgba(140,170,110,.16); }
+  .entry .badge.expense { background: rgba(196,112,74,.16); }
+  .entry .main { flex: 1; min-width: 0; }
+  .entry .title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .entry .sub { font-size: .78rem; color: var(--text-faint); margin-top: 2px; }
+  .entry .amt { font-weight: 650; flex-shrink: 0; }
+  .entry .amt.earn { color: var(--sage); }
+  .entry .amt.spend { color: var(--rust); }
+
+  /* ---- FAB ---- */
+  .fab {
+    position: fixed;
+    right: calc(18px + var(--safe-right));
+    bottom: calc(20px + var(--safe-bottom));
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: var(--amber);
+    color: #2a1f10;
+    border: none;
+    font-size: 2rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 6px 22px rgba(224,164,88,.4);
+    cursor: pointer;
+    z-index: 40;
+    transition: transform .1s ease;
+  }
+  .fab:active { transform: scale(0.92); }
+
+  /* ---- Bottom sheet / modal ---- */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease;
+    z-index: 50;
+  }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+
+  .sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--surface);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    border-top: 1px solid var(--border);
+    padding:
+      16px
+      calc(18px + var(--safe-right))
+      calc(20px + var(--safe-bottom))
+      calc(18px + var(--safe-left));
+    transform: translateY(100%);
+    transition: transform .26s cubic-bezier(.2,.8,.2,1);
+    z-index: 60;
+    max-height: 92vh;
+    overflow-y: auto;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .sheet.open { transform: translateY(0); }
+  .sheet .grip {
+    width: 40px; height: 4px;
+    background: var(--border);
+    border-radius: 3px;
+    margin: 0 auto 14px;
+  }
+
+  .type-toggle {
+    display: flex;
+    gap: 6px;
+    background: var(--surface-2);
+    border-radius: 11px;
+    padding: 5px;
+    margin-bottom: 16px;
+  }
+  .type-toggle button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 11px 0;
+    border-radius: 8px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .type-toggle button.active.hours { background: var(--sage); color: #1c2412; }
+  .type-toggle button.active.expense { background: var(--rust); color: #2a160e; }
+
+  label { display: block; font-size: .8rem; color: var(--text-dim); margin: 0 0 6px 2px; }
+  .field { margin-bottom: 13px; }
+  .row { display: flex; gap: 11px; }
+  .row .field { flex: 1; }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 1rem;
+    padding: 12px 13px;
+    font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--amber-dim);
+  }
+  input.num { font-variant-numeric: tabular-nums; }
+  textarea { resize: vertical; min-height: 44px; }
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%23a89b88' stroke-width='1.5' fill='none'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 13px center;
+    padding-right: 34px;
+  }
+
+  .calc-line {
+    text-align: center;
+    color: var(--sage);
+    font-weight: 650;
+    font-size: 1.1rem;
+    min-height: 1.4em;
+    margin: 2px 0 12px;
+  }
+
+  .btn {
+    width: 100%;
+    border: none;
+    border-radius: 11px;
+    padding: 14px;
+    font-size: 1rem;
+    font-weight: 650;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--amber); color: #2a1f10; }
+  .btn-ghost { background: var(--surface-2); color: var(--text); }
+  .btn-danger { background: rgba(196,112,74,.16); color: var(--rust); }
+  .btn:active { filter: brightness(.92); }
+  .btn-row { display: flex; gap: 10px; margin-top: 10px; }
+  .btn-row .btn { flex: 1; }
+
+  .sheet h2 { font-size: 1.1rem; margin: 0 0 14px; font-weight: 650; }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    color: var(--text);
+    padding: 15px 16px;
+    font-size: .98rem;
+    font-weight: 550;
+    cursor: pointer;
+    margin-bottom: 9px;
+    text-align: left;
+    font-family: inherit;
+  }
+  .menu-item:active { background: var(--border); }
+  .menu-item .mi-icon { font-size: 1.2rem; width: 24px; text-align: center; }
+  .menu-item .mi-sub { display: block; font-size: .76rem; color: var(--text-faint); font-weight: 400; margin-top: 2px; }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(96px + var(--safe-bottom));
+    transform: translate(-50%, 20px);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 11px 18px;
+    border-radius: 22px;
+    font-size: .88rem;
+    font-weight: 550;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease;
+    z-index: 80;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .hidden { display: none !important; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Ledger<span class="dot">.</span></h1>
+    <button class="icon-btn" id="exportBtn" aria-label="Export and backup">⤓</button>
+  </header>
+
+  <section class="summary">
+    <div class="net-row">
+      <span class="label">Net</span>
+      <span class="net-value num pos" id="netVal">$0.00</span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="k">Hours</div><div class="v num" id="statHours">0</div></div>
+      <div class="stat"><div class="k">Earned</div><div class="v earn num" id="statEarned">$0</div></div>
+      <div class="stat"><div class="k">Spent</div><div class="v spend num" id="statSpent">$0</div></div>
+    </div>
+  </section>
+
+  <div class="period">
+    <button data-period="week" class="active">Week</button>
+    <button data-period="month">Month</button>
+    <button data-period="all">All</button>
+  </div>
+
+  <div class="list" id="list"></div>
+
+  <button class="fab" id="fab" aria-label="Add entry">+</button>
+
+  <!-- Add / Edit sheet -->
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" id="entrySheet" role="dialog" aria-modal="true">
+    <div class="grip"></div>
+    <div class="type-toggle" id="typeToggle">
+      <button class="active hours" data-type="hours">Hours</button>
+      <button data-type="expense">Expense</button>
+    </div>
+
+    <!-- Hours fields -->
+    <div id="hoursFields">
+      <div class="field">
+        <label for="fJob">Job / Site</label>
+        <input id="fJob" list="jobList" placeholder="e.g. Surrey jobsite" autocomplete="off">
+        <datalist id="jobList"></datalist>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="fHours">Hours</label>
+          <input id="fHours" class="num" type="number" inputmode="decimal" step="0.25" min="0" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="fRate">Rate / hr</label>
+          <input id="fRate" class="num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+      <div class="calc-line num" id="calcLine"></div>
+    </div>
+
+    <!-- Expense fields -->
+    <div id="expenseFields" class="hidden">
+      <div class="field">
+        <label for="fDesc">Description</label>
+        <input id="fDesc" placeholder="e.g. Diesel" autocomplete="off">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="fAmount">Amount</label>
+          <input id="fAmount" class="num" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label for="fCat">Category</label>
+          <select id="fCat">
+            <option>Fuel</option>
+            <option>Tools</option>
+            <option>Materials</option>
+            <option>Parking</option>
+            <option>Food</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="fDate">Date</label>
+      <input id="fDate" type="date">
+    </div>
+    <div class="field">
+      <label for="fNote">Note <span style="color:var(--text-faint)">(optional)</span></label>
+      <textarea id="fNote" rows="1" placeholder="Anything to remember…"></textarea>
+    </div>
+
+    <button class="btn btn-primary" id="saveBtn">Save</button>
+    <div class="btn-row hidden" id="editActions">
+      <button class="btn btn-danger" id="deleteBtn">Delete</button>
+    </div>
+  </div>
+
+  <!-- Export sheet -->
+  <div class="sheet" id="exportSheet" role="dialog" aria-modal="true">
+    <div class="grip"></div>
+    <h2>Export &amp; backup</h2>
+    <button class="menu-item" id="miPdf"><span class="mi-icon">🧾</span><span>PDF report<span class="mi-sub">Styled print view → Save as PDF</span></span></button>
+    <button class="menu-item" id="miCsv"><span class="mi-icon">📊</span><span>CSV<span class="mi-sub">Spreadsheet of all entries</span></span></button>
+    <button class="menu-item" id="miJson"><span class="mi-icon">💾</span><span>JSON backup<span class="mi-sub">Full data dump</span></span></button>
+    <button class="menu-item" id="miRestore"><span class="mi-icon">↺</span><span>Restore from backup<span class="mi-sub">Import a JSON backup</span></span></button>
+    <input type="file" id="restoreInput" accept="application/json,.json" class="hidden">
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- IndexedDB ----------
+  var DB_NAME = "ledgerDB", STORE = "entries", db = null;
+
+  function openDB() {
+    return new Promise(function (resolve, reject) {
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function (e) {
+        var d = e.target.result;
+        if (!d.objectStoreNames.contains(STORE)) {
+          d.createObjectStore(STORE, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = function (e) { db = e.target.result; resolve(db); };
+      req.onerror = function (e) { reject(e.target.error); };
+    });
+  }
+  function store(mode) { return db.transaction(STORE, mode).objectStore(STORE); }
+  function dbGetAll() {
+    return new Promise(function (resolve, reject) {
+      var r = store("readonly").getAll();
+      r.onsuccess = function () { resolve(r.result || []); };
+      r.onerror = function () { reject(r.error); };
+    });
+  }
+  function dbPut(entry) {
+    return new Promise(function (resolve, reject) {
+      var r = store("readwrite").put(entry);
+      r.onsuccess = function () { resolve(); };
+      r.onerror = function () { reject(r.error); };
+    });
+  }
+  function dbDelete(id) {
+    return new Promise(function (resolve, reject) {
+      var r = store("readwrite").delete(id);
+      r.onsuccess = function () { resolve(); };
+      r.onerror = function () { reject(r.error); };
+    });
+  }
+
+  // ---------- State ----------
+  var entries = [];
+  var period = "week";
+  var curType = "hours";
+  var editingId = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- Helpers ----------
+  function genId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function todayStr() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+  function money(n) {
+    var v = Math.abs(n).toFixed(2);
+    return (n < 0 ? "-$" : "$") + v.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+  function money0(n) {
+    return "$" + Math.round(Math.abs(n)).toLocaleString();
+  }
+  function parseDate(s) {
+    var p = String(s).split("-");
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+  function round2(n) { return Math.round(n * 100) / 100; }
+
+  function weekStart() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    var dow = (d.getDay() + 6) % 7; // Mon=0
+    d.setDate(d.getDate() - dow);
+    return d;
+  }
+  function monthStart() {
+    var d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+  function inPeriod(entry) {
+    if (period === "all") return true;
+    var ed = parseDate(entry.date);
+    var start = period === "week" ? weekStart() : monthStart();
+    return ed >= start;
+  }
+
+  var DAYNAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var MONNAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function dateKey(d) {
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function fmtDayHead(s) {
+    var d = parseDate(s);
+    if (s === todayStr()) return "Today";
+    var y = new Date(); y.setDate(y.getDate() - 1);
+    if (s === dateKey(y)) return "Yesterday";
+    return DAYNAMES[d.getDay()] + ", " + MONNAMES[d.getMonth()] + " " + d.getDate();
+  }
+
+  function toast(msg) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove("show"); }, 1900);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  // ---------- Render ----------
+  function visibleEntries() {
+    return entries.filter(inPeriod).sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return a.id < b.id ? 1 : -1;
+    });
+  }
+
+  function render() {
+    var vis = visibleEntries();
+    var hours = 0, earned = 0, spent = 0;
+    vis.forEach(function (e) {
+      if (e.type === "hours") { hours += (+e.hours || 0); earned += (+e.amount || 0); }
+      else { spent += (+e.amount || 0); }
+    });
+    var net = earned - spent;
+
+    var netEl = $("netVal");
+    netEl.textContent = money(net);
+    netEl.classList.toggle("pos", net >= 0);
+    netEl.classList.toggle("neg", net < 0);
+    $("statHours").textContent = (Math.round(hours * 100) / 100).toString();
+    $("statEarned").textContent = money0(earned);
+    $("statSpent").textContent = money0(spent);
+
+    // job autocomplete from history
+    var jobs = {};
+    entries.forEach(function (e) { if (e.type === "hours" && e.job) jobs[e.job] = 1; });
+    $("jobList").innerHTML = Object.keys(jobs).map(function (j) {
+      return '<option value="' + esc(j) + '"></option>';
+    }).join("");
+
+    var list = $("list");
+    if (!vis.length) {
+      list.innerHTML = '<div class="list-empty">No entries' +
+        (period === "all" ? " yet." : " this " + period + ".") +
+        '<br>Tap <span style="color:var(--amber)">+</span> to add one.</div>';
+      return;
+    }
+
+    var html = "", lastDate = null;
+    vis.forEach(function (e) {
+      if (e.date !== lastDate) {
+        html += '<div class="day-head">' + fmtDayHead(e.date) + "</div>";
+        lastDate = e.date;
+      }
+      html += entryRow(e);
+    });
+    list.innerHTML = html;
+
+    Array.prototype.forEach.call(list.querySelectorAll(".entry"), function (el) {
+      el.addEventListener("click", function () { openEdit(el.getAttribute("data-id")); });
+    });
+  }
+
+  function entryRow(e) {
+    var isHours = e.type === "hours";
+    var title, sub, amt, amtClass, icon, badgeClass;
+    if (isHours) {
+      title = e.job || "Hours";
+      sub = (e.hours || 0) + " hrs × " + money(+e.rate || 0) + "/hr";
+      amt = "+" + money(+e.amount || 0);
+      amtClass = "earn"; icon = "🕑"; badgeClass = "hours";
+    } else {
+      title = e.desc || "Expense";
+      sub = e.cat || "Other";
+      amt = "−" + money(+e.amount || 0);
+      amtClass = "spend"; icon = "💸"; badgeClass = "expense";
+    }
+    if (e.note) sub += " · " + e.note;
+    return '<div class="entry" data-id="' + e.id + '">' +
+      '<div class="badge ' + badgeClass + '">' + icon + "</div>" +
+      '<div class="main"><div class="title">' + esc(title) + "</div>" +
+      '<div class="sub">' + esc(sub) + "</div></div>" +
+      '<div class="amt num ' + amtClass + '">' + amt + "</div></div>";
+  }
+
+  // ---------- Sheets ----------
+  function openSheet(which) {
+    $("scrim").classList.add("open");
+    $(which).classList.add("open");
+  }
+  function closeSheets() {
+    $("scrim").classList.remove("open");
+    $("entrySheet").classList.remove("open");
+    $("exportSheet").classList.remove("open");
+  }
+
+  function setType(t) {
+    curType = t;
+    Array.prototype.forEach.call($("typeToggle").children, function (b) {
+      b.classList.toggle("active", b.getAttribute("data-type") === t);
+    });
+    $("hoursFields").classList.toggle("hidden", t !== "hours");
+    $("expenseFields").classList.toggle("hidden", t !== "expense");
+  }
+
+  function updateCalc() {
+    var h = parseFloat($("fHours").value) || 0;
+    var r = parseFloat($("fRate").value) || 0;
+    $("calcLine").textContent = (h && r) ? "= " + money(round2(h * r)) : "";
+  }
+
+  function openAdd() {
+    editingId = null;
+    setType("hours");
+    $("fJob").value = "";
+    $("fHours").value = "";
+    $("fRate").value = localStorage.getItem("lastRate") || "";
+    $("fDesc").value = "";
+    $("fAmount").value = "";
+    $("fCat").value = "Fuel";
+    $("fDate").value = todayStr();
+    $("fNote").value = "";
+    updateCalc();
+    $("editActions").classList.add("hidden");
+    $("saveBtn").textContent = "Save";
+    openSheet("entrySheet");
+  }
+
+  function openEdit(id) {
+    var e = entries.filter(function (x) { return x.id === id; })[0];
+    if (!e) return;
+    editingId = id;
+    setType(e.type);
+    if (e.type === "hours") {
+      $("fJob").value = e.job || "";
+      $("fHours").value = e.hours != null ? e.hours : "";
+      $("fRate").value = e.rate != null ? e.rate : "";
+    } else {
+      $("fDesc").value = e.desc || "";
+      $("fAmount").value = e.amount != null ? e.amount : "";
+      $("fCat").value = e.cat || "Other";
+    }
+    $("fDate").value = e.date || todayStr();
+    $("fNote").value = e.note || "";
+    updateCalc();
+    $("editActions").classList.remove("hidden");
+    $("saveBtn").textContent = "Update";
+    openSheet("entrySheet");
+  }
+
+  function save() {
+    var date = $("fDate").value || todayStr();
+    var note = $("fNote").value.trim();
+    var entry;
+    if (curType === "hours") {
+      var hours = parseFloat($("fHours").value);
+      var rate = parseFloat($("fRate").value);
+      if (!(hours > 0)) { toast("Enter hours"); return; }
+      if (!(rate >= 0)) rate = 0;
+      entry = {
+        id: editingId || genId(),
+        type: "hours",
+        job: $("fJob").value.trim(),
+        hours: hours,
+        rate: rate,
+        amount: round2(hours * rate),
+        date: date,
+        note: note
+      };
+      localStorage.setItem("lastRate", String(rate));
+    } else {
+      var amount = parseFloat($("fAmount").value);
+      if (!(amount > 0)) { toast("Enter an amount"); return; }
+      entry = {
+        id: editingId || genId(),
+        type: "expense",
+        desc: $("fDesc").value.trim(),
+        cat: $("fCat").value,
+        amount: round2(amount),
+        date: date,
+        note: note
+      };
+    }
+    var isEdit = !!editingId;
+    dbPut(entry).then(function () {
+      var idx = -1;
+      for (var i = 0; i < entries.length; i++) { if (entries[i].id === entry.id) { idx = i; break; } }
+      if (idx >= 0) entries[idx] = entry; else entries.push(entry);
+      render();
+      closeSheets();
+      toast(isEdit ? "Updated" : "Saved");
+    }).catch(function () { toast("Save failed"); });
+  }
+
+  function del() {
+    if (!editingId) return;
+    var id = editingId;
+    dbDelete(id).then(function () {
+      entries = entries.filter(function (e) { return e.id !== id; });
+      render();
+      closeSheets();
+      toast("Deleted");
+    }).catch(function () { toast("Delete failed"); });
+  }
+
+  // ---------- Export ----------
+  function download(filename, text, mime) {
+    var blob = new Blob([text], { type: mime || "text/plain" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function exportCSV() {
+    var rows = [["Date", "Type", "Job/Description", "Category", "Hours", "Rate", "Amount", "Note"]];
+    entries.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (e) {
+      rows.push([
+        e.date,
+        e.type,
+        e.type === "hours" ? (e.job || "") : (e.desc || ""),
+        e.type === "expense" ? (e.cat || "") : "",
+        e.type === "hours" ? (e.hours != null ? e.hours : "") : "",
+        e.type === "hours" ? (e.rate != null ? e.rate : "") : "",
+        e.amount != null ? e.amount : "",
+        e.note || ""
+      ]);
+    });
+    var csv = rows.map(function (r) {
+      return r.map(function (c) {
+        c = String(c == null ? "" : c);
+        return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c;
+      }).join(",");
+    }).join("\r\n");
+    download("ledger-" + todayStr() + ".csv", csv, "text/csv");
+    toast("CSV downloaded");
+  }
+
+  function exportJSON() {
+    var data = { app: "Ledger", version: 1, exported: new Date().toISOString(), entries: entries };
+    download("ledger-backup-" + todayStr() + ".json", JSON.stringify(data, null, 2), "application/json");
+    toast("Backup downloaded");
+  }
+
+  function exportPDF() {
+    var vis = entries.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var hours = 0, earned = 0, spent = 0;
+    vis.forEach(function (e) {
+      if (e.type === "hours") { hours += (+e.hours || 0); earned += (+e.amount || 0); }
+      else { spent += (+e.amount || 0); }
+    });
+    var net = earned - spent;
+
+    var rowsHtml = vis.map(function (e) {
+      var isH = e.type === "hours";
+      return "<tr>" +
+        "<td>" + e.date + "</td>" +
+        "<td>" + (isH ? esc(e.job || "Hours") : esc(e.desc || "Expense")) + (e.note ? ' <span class="note">— ' + esc(e.note) + "</span>" : "") + "</td>" +
+        "<td>" + (isH ? "Hours" : esc(e.cat || "Expense")) + "</td>" +
+        '<td class="r">' + (isH ? (e.hours + " × " + money(+e.rate || 0)) : "") + "</td>" +
+        '<td class="r ' + (isH ? "earn" : "spend") + '">' + (isH ? "+" : "−") + money(+e.amount || 0) + "</td>" +
+        "</tr>";
+    }).join("");
+
+    var win = window.open("", "_blank");
+    if (!win) { toast("Allow pop-ups for PDF"); return; }
+    var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ledger report</title>' +
+      "<style>" +
+      "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#222;margin:32px;}" +
+      "h1{margin:0 0 2px;font-size:22px;}.sub{color:#777;font-size:13px;margin-bottom:20px;}" +
+      ".cards{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap;}" +
+      ".card{border:1px solid #ddd;border-radius:8px;padding:12px 16px;min-width:90px;}" +
+      ".card .k{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;}" +
+      ".card .v{font-size:18px;font-weight:700;margin-top:3px;}" +
+      ".earn{color:#3f7d34;}.spend{color:#b1502c;}" +
+      "table{width:100%;border-collapse:collapse;font-size:13px;}" +
+      "th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #eee;}" +
+      "th{font-size:11px;text-transform:uppercase;color:#888;letter-spacing:.04em;}" +
+      "td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;}" +
+      ".note{color:#999;font-style:italic;}" +
+      "button{margin-bottom:20px;padding:10px 18px;font-size:14px;border:none;border-radius:8px;background:#e0a458;color:#2a1f10;font-weight:600;cursor:pointer;}" +
+      "@media print{button{display:none;}body{margin:0;}}" +
+      "</style></head><body>" +
+      '<button onclick="window.print()">Save as PDF</button>' +
+      "<h1>Ledger report</h1>" +
+      '<div class="sub">Generated ' + new Date().toLocaleDateString() + " · " + vis.length + " entries</div>" +
+      '<div class="cards">' +
+      '<div class="card"><div class="k">Net</div><div class="v ' + (net >= 0 ? "earn" : "spend") + '">' + money(net) + "</div></div>" +
+      '<div class="card"><div class="k">Hours</div><div class="v">' + (Math.round(hours * 100) / 100) + "</div></div>" +
+      '<div class="card"><div class="k">Earned</div><div class="v earn">' + money(earned) + "</div></div>" +
+      '<div class="card"><div class="k">Spent</div><div class="v spend">' + money(spent) + "</div></div>" +
+      "</div>" +
+      '<table><thead><tr><th>Date</th><th>Job / Description</th><th>Type</th><th class="r">Detail</th><th class="r">Amount</th></tr></thead>' +
+      "<tbody>" + rowsHtml + "</tbody></table>" +
+      "</body></html>";
+    win.document.open(); win.document.write(doc); win.document.close();
+    toast("PDF report opened");
+  }
+
+  function restore(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var data = JSON.parse(reader.result);
+        var imported = Array.isArray(data) ? data : (data.entries || []);
+        if (!Array.isArray(imported)) throw new Error("bad");
+        var byId = {};
+        entries.forEach(function (e) { byId[e.id] = e; });
+        var count = 0;
+        var chain = Promise.resolve();
+        imported.forEach(function (e) {
+          if (!e || !e.id) return;
+          byId[e.id] = e;
+          count++;
+          chain = chain.then(function () { return dbPut(e); });
+        });
+        chain.then(function () {
+          entries = Object.keys(byId).map(function (k) { return byId[k]; });
+          render();
+          closeSheets();
+          toast("Restored " + count + " entries");
+        });
+      } catch (err) {
+        toast("Invalid backup file");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- Wire up ----------
+  function wire() {
+    $("fab").addEventListener("click", openAdd);
+    $("scrim").addEventListener("click", closeSheets);
+    $("exportBtn").addEventListener("click", function () { openSheet("exportSheet"); });
+
+    Array.prototype.forEach.call($("typeToggle").children, function (b) {
+      b.addEventListener("click", function () { setType(b.getAttribute("data-type")); });
+    });
+
+    $("fHours").addEventListener("input", updateCalc);
+    $("fRate").addEventListener("input", updateCalc);
+
+    $("saveBtn").addEventListener("click", save);
+    $("deleteBtn").addEventListener("click", del);
+
+    Array.prototype.forEach.call(document.querySelectorAll(".period button"), function (b) {
+      b.addEventListener("click", function () {
+        period = b.getAttribute("data-period");
+        Array.prototype.forEach.call(document.querySelectorAll(".period button"), function (x) {
+          x.classList.toggle("active", x === b);
+        });
+        render();
+      });
+    });
+
+    $("miPdf").addEventListener("click", function () { closeSheets(); exportPDF(); });
+    $("miCsv").addEventListener("click", function () { closeSheets(); exportCSV(); });
+    $("miJson").addEventListener("click", function () { closeSheets(); exportJSON(); });
+    $("miRestore").addEventListener("click", function () { $("restoreInput").click(); });
+    $("restoreInput").addEventListener("change", function (e) {
+      if (e.target.files && e.target.files[0]) restore(e.target.files[0]);
+      e.target.value = "";
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeSheets();
+    });
+  }
+
+  // ---------- Boot ----------
+  openDB().then(dbGetAll).then(function (rows) {
+    entries = rows || [];
+    wire();
+    render();
+  }).catch(function (err) {
+    document.body.innerHTML =
+      '<div style="padding:40px;text-align:center;color:#c4704a">' +
+      "Storage unavailable.<br><small>" + esc(err && err.message || err) + "</small></div>";
+  });
+})();
+</script>
+</body>
+</html>
