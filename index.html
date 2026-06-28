@@ -1069,57 +1069,72 @@
 
   function exportPDF(list, label) {
     var vis = (list || entries).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
-    var hours = 0, earned = 0, spent = 0;
-    vis.forEach(function (e) {
-      if (e.type === "hours") { hours += (+e.hours || 0); earned += (+e.amount || 0); }
-      else { spent += (+e.amount || 0); }
-    });
-    var net = earned - spent;
+    if (!vis.length) { toast("Nothing to export"); return; }
+    var hoursRows = vis.filter(function (e) { return e.type === "hours"; });
+    var expRows = vis.filter(function (e) { return e.type === "expense"; });
+    var totHours = 0, totEarned = 0, totSpent = 0;
+    hoursRows.forEach(function (e) { totHours += (+e.hours || 0); totEarned += (+e.amount || 0); });
+    expRows.forEach(function (e) { totSpent += (+e.amount || 0); });
 
-    var rowsHtml = vis.map(function (e) {
-      var isH = e.type === "hours";
-      return "<tr>" +
-        "<td>" + e.date + "</td>" +
-        "<td>" + (isH ? esc(e.job || "Hours") : esc(e.desc || "Expense")) + (e.note ? ' <span class="note">— ' + esc(e.note) + "</span>" : "") + "</td>" +
-        "<td>" + (isH ? "Hours" : esc(e.cat || "Expense")) + "</td>" +
-        '<td class="r">' + (isH ? (e.hours + " × " + money(+e.rate || 0)) : "") + "</td>" +
-        '<td class="r ' + (isH ? "earn" : "spend") + '">' + (isH ? "+" : "−") + money(+e.amount || 0) + "</td>" +
-        "</tr>";
-    }).join("");
+    var first = vis[0].date, last = vis[vis.length - 1].date;
+    var yr = parseDate(last).getFullYear();
+    var rangeLabel = (first === last)
+      ? fmtShortDate(first) + ", " + yr
+      : fmtShortDate(first) + " – " + fmtShortDate(last) + ", " + yr;
+
+    var hoursTable = "";
+    if (hoursRows.length) {
+      hoursTable = "<h2>Hours</h2><table><thead><tr><th>Date</th><th>Company</th>" +
+        '<th class="num">Hours</th></tr></thead><tbody>' +
+        hoursRows.map(function (e) {
+          return "<tr><td>" + fmtShortDate(e.date) + "</td><td>" + esc(e.job || "—") +
+            (e.note ? ' <span class="note">(' + esc(e.note) + ")</span>" : "") +
+            '</td><td class="num">' + (Math.round((+e.hours || 0) * 100) / 100).toFixed(2) + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+    var expTable = "";
+    if (expRows.length) {
+      expTable = "<h2>Expenses</h2><table><thead><tr><th>Date</th><th>Description</th>" +
+        '<th class="num">Amount</th></tr></thead><tbody>' +
+        expRows.map(function (e) {
+          return "<tr><td>" + fmtShortDate(e.date) + "</td><td>" + esc(e.desc || "Expense") +
+            (e.cat ? " [" + esc(e.cat) + "]" : "") +
+            '</td><td class="num">' + money(+e.amount || 0) + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }
+
+    var totals = '<div class="totals"><span>Total Hours: ' +
+      (Math.round(totHours * 100) / 100).toFixed(2) + "</span>";
+    if (totEarned) totals += '<span class="earn">Total Earned: ' + money(totEarned) + "</span>";
+    if (totSpent) totals += '<span class="spend">Total Expenses: ' + money(totSpent) + "</span>";
+    totals += "</div>";
 
     var win = window.open("", "_blank");
     if (!win) { toast("Allow pop-ups for PDF"); return; }
-    var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ledger report</title>' +
+    var doc = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Timesheet</title>' +
       "<style>" +
-      "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#222;margin:32px;}" +
-      "h1{margin:0 0 2px;font-size:22px;}.sub{color:#777;font-size:13px;margin-bottom:20px;}" +
-      ".cards{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap;}" +
-      ".card{border:1px solid #ddd;border-radius:8px;padding:12px 16px;min-width:90px;}" +
-      ".card .k{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;}" +
-      ".card .v{font-size:18px;font-weight:700;margin-top:3px;}" +
-      ".earn{color:#3f7d34;}.spend{color:#b1502c;}" +
-      "table{width:100%;border-collapse:collapse;font-size:13px;}" +
-      "th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #eee;}" +
-      "th{font-size:11px;text-transform:uppercase;color:#888;letter-spacing:.04em;}" +
-      "td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;}" +
-      ".note{color:#999;font-style:italic;}" +
-      "button{margin-bottom:20px;padding:10px 18px;font-size:14px;border:none;border-radius:8px;background:#e0a458;color:#2a1f10;font-weight:600;cursor:pointer;}" +
+      "body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a1a1a;margin:32px;}" +
+      "h1{margin:0 0 2px;font-size:26px;}" +
+      ".range{color:#666;font-size:13px;margin-bottom:18px;}" +
+      "h2{font-size:19px;margin:22px 0 8px;}" +
+      "table{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:6px;}" +
+      "th,td{border:1px solid #bbb;padding:8px 12px;text-align:left;}" +
+      "th{background:#ececec;font-weight:700;}" +
+      "td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}" +
+      ".note{color:#888;font-style:italic;font-size:12px;}" +
+      ".totals{margin-top:22px;text-align:center;font-size:18px;font-weight:700;line-height:1.7;}" +
+      ".totals span{display:block;}" +
+      ".totals .earn{color:#3f7d34;}.totals .spend{color:#b1502c;}" +
+      "button{margin-bottom:18px;padding:10px 18px;font-size:14px;border:none;border-radius:8px;background:#e0a458;color:#2a1f10;font-weight:600;cursor:pointer;}" +
       "@media print{button{display:none;}body{margin:0;}}" +
       "</style></head><body>" +
       '<button onclick="window.print()">Save as PDF</button>' +
-      "<h1>" + esc(label || "Ledger report") + "</h1>" +
-      '<div class="sub">Generated ' + new Date().toLocaleDateString() + " · " + vis.length + " entries</div>" +
-      '<div class="cards">' +
-      '<div class="card"><div class="k">Net</div><div class="v ' + (net >= 0 ? "earn" : "spend") + '">' + money(net) + "</div></div>" +
-      '<div class="card"><div class="k">Hours</div><div class="v">' + (Math.round(hours * 100) / 100) + "</div></div>" +
-      '<div class="card"><div class="k">Earned</div><div class="v earn">' + money(earned) + "</div></div>" +
-      '<div class="card"><div class="k">Spent</div><div class="v spend">' + money(spent) + "</div></div>" +
-      "</div>" +
-      '<table><thead><tr><th>Date</th><th>Job / Description</th><th>Type</th><th class="r">Detail</th><th class="r">Amount</th></tr></thead>' +
-      "<tbody>" + rowsHtml + "</tbody></table>" +
+      "<h1>" + esc(label || "Timesheet") + "</h1>" +
+      '<div class="range">' + rangeLabel + " · " + vis.length + " entries</div>" +
+      hoursTable + expTable + totals +
       "</body></html>";
     win.document.open(); win.document.write(doc); win.document.close();
-    toast("PDF report opened");
+    toast("Timesheet opened");
   }
 
   function restore(file) {
@@ -1167,7 +1182,7 @@
     $("selPdf").addEventListener("click", function () {
       var sel = selectedList();
       if (!sel.length) { toast("Select some entries first"); return; }
-      exportPDF(sel, "Hours & Expenses");
+      exportPDF(sel, "Timesheet");
     });
 
     Array.prototype.forEach.call($("typeToggle").children, function (b) {
