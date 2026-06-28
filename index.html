@@ -70,6 +70,8 @@
   }
   header h1 .dot { color: var(--amber); }
 
+  .header-actions { display: flex; gap: 8px; }
+
   .icon-btn {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -84,6 +86,7 @@
     transition: background .15s ease, transform .08s ease;
   }
   .icon-btn:active { transform: scale(0.94); background: var(--surface-2); }
+  .icon-btn.active-mode { background: var(--amber); color: #2a1f10; border-color: var(--amber); }
 
   /* ---- Summary ---- */
   .summary {
@@ -173,6 +176,19 @@
     transition: background .12s ease, transform .08s ease;
   }
   .entry:active { transform: scale(0.99); background: var(--surface-2); }
+  .entry.selected { border-color: var(--amber); background: rgba(224,164,88,.10); }
+  .entry .check {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--text-faint);
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    font-size: .8rem;
+    color: #2a1f10;
+  }
+  .entry.selected .check { background: var(--amber); border-color: var(--amber); }
   .entry .badge {
     width: 38px;
     height: 38px;
@@ -217,6 +233,52 @@
     transition: transform .1s ease;
   }
   .fab:active { transform: scale(0.92); }
+
+  /* ---- Selection tally bar ---- */
+  .selbar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    max-width: 640px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.45);
+    padding:
+      12px
+      calc(14px + var(--safe-right))
+      calc(12px + var(--safe-bottom))
+      calc(14px + var(--safe-left));
+    z-index: 45;
+    transform: translateY(110%);
+    transition: transform .24s cubic-bezier(.2,.8,.2,1);
+  }
+  .selbar.open { transform: translateY(0); }
+  .selbar-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin-bottom: 10px;
+    font-size: .82rem;
+  }
+  .selbar-info .count { font-weight: 700; color: var(--amber); }
+  .selbar-info .net { font-weight: 650; }
+  .selbar-info .sep { color: var(--text-faint); }
+  .selbar-info .earn { color: var(--sage); }
+  .selbar-info .spend { color: var(--rust); }
+  .selbar-actions { display: flex; gap: 8px; }
+  .sb-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 11px 10px;
+    font-size: .9rem;
+    font-weight: 650;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .sb-btn.primary { background: var(--amber); color: #2a1f10; flex: 1.4; }
+  .sb-btn.ghost { background: var(--surface-2); color: var(--text); flex: 1; }
+  .sb-btn:active { filter: brightness(.92); }
 
   /* ---- Bottom sheet / modal ---- */
   .scrim {
@@ -390,7 +452,10 @@
 <body>
   <header>
     <h1>Ledger<span class="dot">.</span></h1>
-    <button class="icon-btn" id="exportBtn" aria-label="Export and backup">⤓</button>
+    <div class="header-actions">
+      <button class="icon-btn" id="selectBtn" aria-label="Select entries to send">☑</button>
+      <button class="icon-btn" id="exportBtn" aria-label="Export and backup">⤓</button>
+    </div>
   </header>
 
   <section class="summary">
@@ -414,6 +479,17 @@
   <div class="list" id="list"></div>
 
   <button class="fab" id="fab" aria-label="Add entry">+</button>
+
+  <!-- Selection tally bar -->
+  <div class="selbar" id="selbar">
+    <div class="selbar-info" id="selInfo"><span class="count">0 selected</span></div>
+    <div class="selbar-actions">
+      <button class="sb-btn ghost" id="selCancel">Cancel</button>
+      <button class="sb-btn ghost" id="selAll">All</button>
+      <button class="sb-btn ghost" id="selPdf">PDF</button>
+      <button class="sb-btn primary" id="selSend">Send ▸</button>
+    </div>
+  </div>
 
   <!-- Add / Edit sheet -->
   <div class="scrim" id="scrim"></div>
@@ -545,6 +621,8 @@
   var period = "week";
   var curType = "hours";
   var editingId = null;
+  var selectMode = false;
+  var selectedIds = {};
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -667,8 +745,14 @@
     list.innerHTML = html;
 
     Array.prototype.forEach.call(list.querySelectorAll(".entry"), function (el) {
-      el.addEventListener("click", function () { openEdit(el.getAttribute("data-id")); });
+      el.addEventListener("click", function () {
+        var id = el.getAttribute("data-id");
+        if (selectMode) toggleSelect(id);
+        else openEdit(id);
+      });
     });
+
+    if (selectMode) updateSelbar();
   }
 
   function entryRow(e) {
@@ -686,11 +770,140 @@
       amtClass = "spend"; icon = "💸"; badgeClass = "expense";
     }
     if (e.note) sub += " · " + e.note;
-    return '<div class="entry" data-id="' + e.id + '">' +
+    var isSel = selectMode && selectedIds[e.id];
+    return '<div class="entry' + (isSel ? " selected" : "") + '" data-id="' + e.id + '">' +
+      (selectMode ? '<div class="check">' + (isSel ? "✓" : "") + "</div>" : "") +
       '<div class="badge ' + badgeClass + '">' + icon + "</div>" +
       '<div class="main"><div class="title">' + esc(title) + "</div>" +
       '<div class="sub">' + esc(sub) + "</div></div>" +
       '<div class="amt num ' + amtClass + '">' + amt + "</div></div>";
+  }
+
+  // ---------- Selection / send-to-boss ----------
+  function fmtShortDate(s) {
+    var d = parseDate(s);
+    return MONNAMES[d.getMonth()] + " " + d.getDate();
+  }
+  function selectedList() {
+    return entries.filter(function (e) { return selectedIds[e.id]; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : (a.date > b.date ? 1 : 0); });
+  }
+  function toggleSelect(id) {
+    if (selectedIds[id]) delete selectedIds[id]; else selectedIds[id] = 1;
+    render();
+  }
+  function enterSelectMode() {
+    selectMode = true;
+    selectedIds = {};
+    $("selectBtn").classList.add("active-mode");
+    $("fab").classList.add("hidden");
+    $("selbar").classList.add("open");
+    render();
+  }
+  function exitSelectMode() {
+    selectMode = false;
+    selectedIds = {};
+    $("selectBtn").classList.remove("active-mode");
+    $("fab").classList.remove("hidden");
+    $("selbar").classList.remove("open");
+    render();
+  }
+  function selectAllVisible() {
+    var vis = visibleEntries();
+    var allOn = vis.length && vis.every(function (e) { return selectedIds[e.id]; });
+    selectedIds = {};
+    if (!allOn) vis.forEach(function (e) { selectedIds[e.id] = 1; });
+    render();
+  }
+  function updateSelbar() {
+    var sel = selectedList();
+    var hrs = 0, earn = 0, spent = 0;
+    sel.forEach(function (e) {
+      if (e.type === "hours") { hrs += (+e.hours || 0); earn += (+e.amount || 0); }
+      else { spent += (+e.amount || 0); }
+    });
+    var net = earn - spent;
+    var html = '<span class="count">' + sel.length + " selected</span>";
+    if (sel.length) {
+      html += '<span class="sep">·</span><span class="num">' + (Math.round(hrs * 100) / 100) + " hrs</span>";
+      if (earn) html += '<span class="sep">·</span><span class="earn num">' + money0(earn) + "</span>";
+      if (spent) html += '<span class="sep">·</span><span class="spend num">−' + money0(spent) + "</span>";
+      html += '<span class="sep">·</span><span class="net num">net ' + money(net) + "</span>";
+    }
+    $("selInfo").innerHTML = html;
+  }
+
+  function buildSummary(sel) {
+    var hoursList = sel.filter(function (e) { return e.type === "hours"; });
+    var expList = sel.filter(function (e) { return e.type === "expense"; });
+    var lines = ["Hours & Expenses"];
+    if (sel.length) {
+      var d0 = fmtShortDate(sel[0].date), d1 = fmtShortDate(sel[sel.length - 1].date);
+      lines.push(d0 === d1 ? d0 : d0 + " – " + d1);
+    }
+    lines.push("");
+    var hrsTotal = 0, earnTotal = 0, expTotal = 0;
+    if (hoursList.length) {
+      lines.push("HOURS");
+      hoursList.forEach(function (e) {
+        hrsTotal += (+e.hours || 0); earnTotal += (+e.amount || 0);
+        lines.push("• " + fmtShortDate(e.date) + "  " + (e.job || "Hours") + "  —  " +
+          (e.hours) + " hrs" + (e.rate ? " @ " + money(+e.rate) : "") + " = " + money(+e.amount || 0) +
+          (e.note ? "  (" + e.note + ")" : ""));
+      });
+      lines.push("Subtotal: " + (Math.round(hrsTotal * 100) / 100) + " hrs = " + money(earnTotal));
+      lines.push("");
+    }
+    if (expList.length) {
+      lines.push("EXPENSES");
+      expList.forEach(function (e) {
+        expTotal += (+e.amount || 0);
+        lines.push("• " + fmtShortDate(e.date) + "  " + (e.desc || "Expense") +
+          (e.cat ? " [" + e.cat + "]" : "") + "  —  " + money(+e.amount || 0) +
+          (e.note ? "  (" + e.note + ")" : ""));
+      });
+      lines.push("Subtotal: " + money(expTotal));
+      lines.push("");
+    }
+    lines.push("———");
+    lines.push("Total hours: " + (Math.round(hrsTotal * 100) / 100));
+    if (earnTotal) lines.push("Total earned: " + money(earnTotal));
+    if (expTotal) lines.push("Total expenses: " + money(expTotal));
+    return lines.join("\n");
+  }
+
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      toast(ok ? "Copied to clipboard" : "Copy failed");
+    } catch (e) {
+      toast("Copy not supported");
+    }
+  }
+
+  function sendSelection() {
+    var sel = selectedList();
+    if (!sel.length) { toast("Select some entries first"); return; }
+    var text = buildSummary(sel);
+    if (navigator.share) {
+      navigator.share({ title: "Hours & Expenses", text: text })
+        .then(function () { toast("Shared"); })
+        .catch(function () {});
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        function () { toast("Copied to clipboard"); },
+        function () { fallbackCopy(text); }
+      );
+    } else {
+      fallbackCopy(text);
+    }
   }
 
   // ---------- Sheets ----------
@@ -854,8 +1067,8 @@
     toast("Backup downloaded");
   }
 
-  function exportPDF() {
-    var vis = entries.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  function exportPDF(list, label) {
+    var vis = (list || entries).slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; });
     var hours = 0, earned = 0, spent = 0;
     vis.forEach(function (e) {
       if (e.type === "hours") { hours += (+e.hours || 0); earned += (+e.amount || 0); }
@@ -894,7 +1107,7 @@
       "@media print{button{display:none;}body{margin:0;}}" +
       "</style></head><body>" +
       '<button onclick="window.print()">Save as PDF</button>' +
-      "<h1>Ledger report</h1>" +
+      "<h1>" + esc(label || "Ledger report") + "</h1>" +
       '<div class="sub">Generated ' + new Date().toLocaleDateString() + " · " + vis.length + " entries</div>" +
       '<div class="cards">' +
       '<div class="card"><div class="k">Net</div><div class="v ' + (net >= 0 ? "earn" : "spend") + '">' + money(net) + "</div></div>" +
@@ -944,6 +1157,18 @@
     $("fab").addEventListener("click", openAdd);
     $("scrim").addEventListener("click", closeSheets);
     $("exportBtn").addEventListener("click", function () { openSheet("exportSheet"); });
+
+    $("selectBtn").addEventListener("click", function () {
+      if (selectMode) exitSelectMode(); else enterSelectMode();
+    });
+    $("selCancel").addEventListener("click", exitSelectMode);
+    $("selAll").addEventListener("click", selectAllVisible);
+    $("selSend").addEventListener("click", sendSelection);
+    $("selPdf").addEventListener("click", function () {
+      var sel = selectedList();
+      if (!sel.length) { toast("Select some entries first"); return; }
+      exportPDF(sel, "Hours & Expenses");
+    });
 
     Array.prototype.forEach.call($("typeToggle").children, function (b) {
       b.addEventListener("click", function () { setType(b.getAttribute("data-type")); });
