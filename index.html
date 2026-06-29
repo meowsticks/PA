@@ -148,6 +148,31 @@
   }
   .period button.active { background: var(--amber); color: #2a1f10; }
 
+  .custom-range {
+    display: flex;
+    gap: 11px;
+    margin: -4px 14px 14px;
+  }
+  .custom-range .cr-field { flex: 1; }
+  .custom-range label {
+    font-size: .7rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin: 0 0 5px 2px;
+  }
+  .custom-range input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: .95rem;
+    padding: 10px 12px;
+    font-family: inherit;
+  }
+  .custom-range input:focus { outline: none; border-color: var(--amber-dim); }
+
   /* ---- Entry list ---- */
   .list { margin: 0 14px; }
   .list-empty {
@@ -474,6 +499,18 @@
     <button data-period="week" class="active">Week</button>
     <button data-period="month">Month</button>
     <button data-period="all">All</button>
+    <button data-period="custom">Custom</button>
+  </div>
+
+  <div class="custom-range hidden" id="customRange">
+    <div class="cr-field">
+      <label for="customFrom">From</label>
+      <input id="customFrom" type="date">
+    </div>
+    <div class="cr-field">
+      <label for="customTo">To</label>
+      <input id="customTo" type="date">
+    </div>
   </div>
 
   <div class="list" id="list"></div>
@@ -506,6 +543,16 @@
         <label for="fJob">Job / Site</label>
         <input id="fJob" list="jobList" placeholder="e.g. Surrey jobsite" autocomplete="off">
         <datalist id="jobList"></datalist>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="fStart">Start <span style="color:var(--text-faint)">(optional)</span></label>
+          <input id="fStart" type="time">
+        </div>
+        <div class="field">
+          <label for="fEnd">End</label>
+          <input id="fEnd" type="time">
+        </div>
       </div>
       <div class="row">
         <div class="field">
@@ -623,6 +670,8 @@
   var editingId = null;
   var selectMode = false;
   var selectedIds = {};
+  var customFrom = "";
+  var customTo = "";
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -649,6 +698,25 @@
   }
   function round2(n) { return Math.round(n * 100) / 100; }
 
+  // "HH:MM" (24h) -> decimal hours between start and end (handles overnight)
+  function hoursBetween(start, end) {
+    if (!start || !end) return null;
+    var s = start.split(":"), e = end.split(":");
+    var sm = (+s[0]) * 60 + (+s[1]);
+    var em = (+e[0]) * 60 + (+e[1]);
+    var diff = em - sm;
+    if (diff < 0) diff += 24 * 60; // crossed midnight
+    return Math.round((diff / 60) * 100) / 100;
+  }
+  // "HH:MM" (24h) -> "h:MM AM/PM"
+  function fmtTime(t) {
+    if (!t) return "";
+    var p = t.split(":"), h = +p[0], m = p[1];
+    var ap = h < 12 ? "AM" : "PM";
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return h12 + ":" + m + " " + ap;
+  }
+
   function weekStart() {
     var d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -662,6 +730,11 @@
   }
   function inPeriod(entry) {
     if (period === "all") return true;
+    if (period === "custom") {
+      if (customFrom && entry.date < customFrom) return false;
+      if (customTo && entry.date > customTo) return false;
+      return true;
+    }
     var ed = parseDate(entry.date);
     var start = period === "week" ? weekStart() : monthStart();
     return ed >= start;
@@ -729,7 +802,7 @@
     var list = $("list");
     if (!vis.length) {
       list.innerHTML = '<div class="list-empty">No entries' +
-        (period === "all" ? " yet." : " this " + period + ".") +
+        (period === "all" ? " yet." : period === "custom" ? " in this range." : " this " + period + ".") +
         '<br>Tap <span style="color:var(--amber)">+</span> to add one.</div>';
       return;
     }
@@ -760,7 +833,8 @@
     var title, sub, amt, amtClass, icon, badgeClass;
     if (isHours) {
       title = e.job || "Hours";
-      sub = (e.hours || 0) + " hrs × " + money(+e.rate || 0) + "/hr";
+      sub = (e.start && e.end ? fmtTime(e.start) + "–" + fmtTime(e.end) + " · " : "") +
+        (e.hours || 0) + " hrs × " + money(+e.rate || 0) + "/hr";
       amt = "+" + money(+e.amount || 0);
       amtClass = "earn"; icon = "🕑"; badgeClass = "hours";
     } else {
@@ -848,6 +922,7 @@
       hoursList.forEach(function (e) {
         hrsTotal += (+e.hours || 0); earnTotal += (+e.amount || 0);
         lines.push("• " + fmtShortDate(e.date) + "  " + (e.job || "Hours") + "  —  " +
+          (e.start && e.end ? fmtTime(e.start) + "–" + fmtTime(e.end) + "  ·  " : "") +
           (e.hours) + " hrs" + (e.rate ? " @ " + money(+e.rate) : "") + " = " + money(+e.amount || 0) +
           (e.note ? "  (" + e.note + ")" : ""));
       });
@@ -932,10 +1007,19 @@
     $("calcLine").textContent = (h && r) ? "= " + money(round2(h * r)) : "";
   }
 
+  // when both start & end set, auto-fill the Hours field
+  function syncHoursFromTimes() {
+    var hb = hoursBetween($("fStart").value, $("fEnd").value);
+    if (hb != null) $("fHours").value = hb;
+    updateCalc();
+  }
+
   function openAdd() {
     editingId = null;
     setType("hours");
     $("fJob").value = "";
+    $("fStart").value = "";
+    $("fEnd").value = "";
     $("fHours").value = "";
     $("fRate").value = localStorage.getItem("lastRate") || "";
     $("fDesc").value = "";
@@ -956,6 +1040,8 @@
     setType(e.type);
     if (e.type === "hours") {
       $("fJob").value = e.job || "";
+      $("fStart").value = e.start || "";
+      $("fEnd").value = e.end || "";
       $("fHours").value = e.hours != null ? e.hours : "";
       $("fRate").value = e.rate != null ? e.rate : "";
     } else {
@@ -984,6 +1070,8 @@
         id: editingId || genId(),
         type: "hours",
         job: $("fJob").value.trim(),
+        start: $("fStart").value || "",
+        end: $("fEnd").value || "",
         hours: hours,
         rate: rate,
         amount: round2(hours * rate),
@@ -1084,12 +1172,17 @@
 
     var hoursTable = "";
     if (hoursRows.length) {
-      hoursTable = "<h2>Hours</h2><table><thead><tr><th>Date</th><th>Company</th>" +
-        '<th class="num">Hours</th></tr></thead><tbody>' +
+      var anyTimes = hoursRows.some(function (e) { return e.start && e.end; });
+      var head = "<tr><th>Date</th><th>Company</th>" +
+        (anyTimes ? "<th>Start</th><th>End</th>" : "") +
+        '<th class="num">Hours</th></tr>';
+      hoursTable = "<h2>Hours</h2><table><thead>" + head + "</thead><tbody>" +
         hoursRows.map(function (e) {
           return "<tr><td>" + fmtShortDate(e.date) + "</td><td>" + esc(e.job || "—") +
-            (e.note ? ' <span class="note">(' + esc(e.note) + ")</span>" : "") +
-            '</td><td class="num">' + (Math.round((+e.hours || 0) * 100) / 100).toFixed(2) + "</td></tr>";
+            (e.note ? ' <span class="note">(' + esc(e.note) + ")</span>" : "") + "</td>" +
+            (anyTimes ? "<td>" + (e.start ? fmtTime(e.start) : "—") + "</td><td>" +
+              (e.end ? fmtTime(e.end) : "—") + "</td>" : "") +
+            '<td class="num">' + (Math.round((+e.hours || 0) * 100) / 100).toFixed(2) + "</td></tr>";
         }).join("") + "</tbody></table>";
     }
     var expTable = "";
@@ -1189,6 +1282,8 @@
       b.addEventListener("click", function () { setType(b.getAttribute("data-type")); });
     });
 
+    $("fStart").addEventListener("input", syncHoursFromTimes);
+    $("fEnd").addEventListener("input", syncHoursFromTimes);
     $("fHours").addEventListener("input", updateCalc);
     $("fRate").addEventListener("input", updateCalc);
 
@@ -1201,8 +1296,15 @@
         Array.prototype.forEach.call(document.querySelectorAll(".period button"), function (x) {
           x.classList.toggle("active", x === b);
         });
+        $("customRange").classList.toggle("hidden", period !== "custom");
         render();
       });
+    });
+    $("customFrom").addEventListener("change", function () {
+      customFrom = $("customFrom").value; render();
+    });
+    $("customTo").addEventListener("change", function () {
+      customTo = $("customTo").value; render();
     });
 
     $("miPdf").addEventListener("click", function () { closeSheets(); exportPDF(); });
