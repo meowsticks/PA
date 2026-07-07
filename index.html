@@ -445,6 +445,19 @@
   .menu-item .mi-icon { font-size: 1.2rem; width: 24px; text-align: center; }
   .menu-item .mi-sub { display: block; font-size: .76rem; color: var(--text-faint); font-weight: 400; margin-top: 2px; }
 
+  .storage-note {
+    font-size: .78rem;
+    line-height: 1.4;
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin-top: 4px;
+  }
+  .storage-note.ok { color: var(--sage); }
+  .storage-note.warn { color: var(--amber); }
+
   /* ---- Toast ---- */
   .toast {
     position: fixed;
@@ -616,6 +629,7 @@
     <button class="menu-item" id="miJson"><span class="mi-icon">💾</span><span>JSON backup<span class="mi-sub">Full data dump</span></span></button>
     <button class="menu-item" id="miRestore"><span class="mi-icon">↺</span><span>Restore from backup<span class="mi-sub">Import a JSON backup</span></span></button>
     <input type="file" id="restoreInput" accept="application/json,.json" class="hidden">
+    <div class="storage-note" id="storageStatus"></div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -765,6 +779,33 @@
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  // ---------- Storage persistence ----------
+  // Ask the browser not to auto-evict our IndexedDB data under storage pressure.
+  function requestPersistence() {
+    if (navigator.storage && navigator.storage.persist) {
+      try { navigator.storage.persist(); } catch (e) {}
+    }
+  }
+  function updateStorageStatus() {
+    var el = $("storageStatus");
+    if (!el) return;
+    el.className = "storage-note";
+    if (navigator.storage && navigator.storage.persisted) {
+      navigator.storage.persisted().then(function (p) {
+        if (p) {
+          el.classList.add("ok");
+          el.textContent = "✓ Storage protected — this device won't auto-clear your entries. Still, export a JSON backup now and then.";
+        } else {
+          requestPersistence();
+          el.classList.add("warn");
+          el.textContent = "⚠ Add this page to your Home Screen (browser menu → Add to Home Screen) to lock your data in, and keep a JSON backup as a safety net.";
+        }
+      });
+    } else {
+      el.textContent = "Tip: Add to Home Screen and keep a JSON backup so your entries stay safe.";
+    }
   }
 
   // ---------- Render ----------
@@ -1264,7 +1305,7 @@
   function wire() {
     $("fab").addEventListener("click", openAdd);
     $("scrim").addEventListener("click", closeSheets);
-    $("exportBtn").addEventListener("click", function () { openSheet("exportSheet"); });
+    $("exportBtn").addEventListener("click", function () { openSheet("exportSheet"); updateStorageStatus(); });
 
     $("selectBtn").addEventListener("click", function () {
       if (selectMode) exitSelectMode(); else enterSelectMode();
@@ -1322,6 +1363,7 @@
   }
 
   // ---------- Boot ----------
+  requestPersistence();
   openDB().then(dbGetAll).then(function (rows) {
     entries = rows || [];
     wire();
